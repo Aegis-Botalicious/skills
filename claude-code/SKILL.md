@@ -5,83 +5,146 @@ description: Use Claude Code CLI for planning, architecture, and design work. Tr
 
 # Claude Code CLI
 
-Use `claude` for planning, design, and architecture work. Hands off execution to Goose.
+Use `claude` for planning, design, and architecture. Hands off execution to Goose.
 
-## Modes
-
-| Mode | Flag | Use Case |
-|------|------|----------|
-| **Interactive** | `claude` | Full session with /plan, /compact |
-| **Print** | `claude -p "prompt"` | One-shot, exits after response |
-| **Plan** | `--permission-mode plan` | Planning mode, no execution |
-
-## Key Features
-
-### Plan Mode
-
-For architecture and design without execution:
+## Quick Reference
 
 ```bash
-claude --permission-mode plan "Design the auth module for HabitYield"
+claude                          # Interactive REPL
+claude "query"                  # REPL with initial prompt
+claude -p "query"               # Print mode (non-interactive, exits)
+claude -c                       # Continue most recent conversation
+claude -r "session"             # Resume by ID or name
 ```
 
-In interactive mode, use `/plan` to switch:
-```
-/plan on    # Enable plan mode
-/plan off   # Disable plan mode
-```
-
-### Continue Session
+## Permission Modes
 
 ```bash
-claude -c              # Continue last session in current dir
-claude -r              # Resume by session picker
-claude -r "search"     # Resume with search term
+claude --permission-mode plan      # Planning only, no file changes
+claude --permission-mode default   # Normal prompting
+claude --permission-mode delegate  # Delegate to subagents
 ```
 
-### Model Selection
+In interactive mode, use `Shift+Tab` or `Alt+M` to cycle modes.
+
+## Key Interactive Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/plan` | Enter plan mode directly |
+| `/compact [focus]` | Compress context, optional focus instructions |
+| `/context` | Visualize context usage as colored grid |
+| `/cost` | Show token usage statistics |
+| `/memory` | Edit CLAUDE.md memory files |
+| `/init` | Initialize project with CLAUDE.md |
+| `/model` | Switch model mid-session |
+| `/rewind` | Restore conversation to previous point |
+| `/clear` | Clear conversation history |
+| `/resume [session]` | Resume by ID/name or open picker |
+| `/export [file]` | Export conversation to file/clipboard |
+
+## Quick Input Modes
+
+| Prefix | Action |
+|--------|--------|
+| `!` | Run bash command directly (e.g., `! npm test`) |
+| `@` | File path autocomplete (e.g., `@src/main.ts`) |
+| `/` | Commands and skills |
+
+## Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+B` | Background running task |
+| `Ctrl+L` | Clear terminal (keeps history) |
+| `Ctrl+O` | Toggle verbose output |
+| `Ctrl+R` | Reverse search history |
+| `Shift+Tab` | Cycle permission modes |
+| `Esc Esc` | Rewind conversation/code |
+| `Option+P` | Switch model |
+
+## Print Mode (Automation)
 
 ```bash
-claude --model opus "Complex architecture task"
-claude --model sonnet "Standard task"
+# One-shot query
+claude -p "explain this function"
+
+# Piped input
+cat logs.txt | claude -p "analyze errors"
+
+# JSON output for scripting
+claude -p "query" --output-format json
+
+# Streaming JSON
+claude -p "query" --output-format stream-json
+
+# With limits
+claude -p "query" --max-turns 5 --max-budget-usd 1.00
+
+# Custom system prompt (append to default)
+claude --append-system-prompt "Always use TypeScript" "query"
+
+# Replace system prompt entirely
+claude --system-prompt "You are a Python expert" "query"
 ```
 
-### Output Formats
+## Subagents
+
+Define inline subagents for specialized tasks:
 
 ```bash
-# For piping/scripting
-claude -p "prompt" --output-format json
-claude -p "prompt" --output-format stream-json
+claude --agents '{
+  "reviewer": {
+    "description": "Code reviewer for quality checks",
+    "prompt": "You are a senior code reviewer. Focus on security and best practices.",
+    "tools": ["Read", "Grep", "Glob"],
+    "model": "sonnet"
+  }
+}'
 ```
 
-## Workflow: Planning with Claude Code
+## MCP Configuration
 
-### 1. Start Planning Session
+```bash
+claude mcp                           # Manage MCP servers
+claude --mcp-config ./mcp.json       # Load MCP from file
+```
+
+## Session Management
+
+```bash
+claude -c                            # Continue last in current dir
+claude -r "auth-refactor"            # Resume specific session
+claude --resume abc123 --fork-session  # Fork existing session
+claude --from-pr 123                 # Resume session linked to PR
+```
+
+## Planning Workflow
+
+### 1. Start Plan Mode
 
 ```bash
 cd ~/project
 claude --permission-mode plan
 ```
 
-### 2. Refine PRD/Design
+### 2. Refine Requirements
 
-Inside session:
 ```
-/plan on
+/plan
 
 Review this PRD and ask clarifying questions:
 [paste PRD]
 ```
 
-Claude will use AskUserQuestionTool to refine requirements.
+Claude uses AskUserQuestionTool to refine requirements interactively.
 
-### 3. Create Architecture Doc
+### 3. Create Architecture
 
 ```
-Create a detailed architecture document for this feature.
-Include:
+Create architecture document with:
 - Component breakdown
-- Data flow
+- Data flow diagrams
 - API contracts
 - File structure
 ```
@@ -89,60 +152,36 @@ Include:
 ### 4. Generate Implementation Plan
 
 ```
-Create a step-by-step implementation plan that can be handed to a coding agent.
-Format as numbered tasks with clear acceptance criteria.
+Create step-by-step implementation plan for a coding agent.
+Number each task with clear acceptance criteria.
+Save to docs/IMPLEMENTATION_PLAN.md
 ```
 
-### 5. Export for Goose
-
-Save the plan to a file for Goose to execute:
-```
-Save this implementation plan to docs/IMPLEMENTATION_PLAN.md
-```
-
-## Integration with Goose
-
-### Handoff Pattern
-
-1. **Claude Code** creates:
-   - `docs/ARCHITECTURE.md`
-   - `docs/IMPLEMENTATION_PLAN.md`
-   - `docs/API_SPEC.md`
-
-2. **Goose** executes:
-   ```bash
-   goose session --name "feature-x" 
-   > Execute the plan in docs/IMPLEMENTATION_PLAN.md
-   ```
-
-## Running in Background
-
-For long planning sessions:
+### 5. Handoff to Goose
 
 ```bash
-# Start with PTY
+# Goose executes the plan
+goose run -i docs/IMPLEMENTATION_PLAN.md
+```
+
+## Background Execution
+
+```bash
+# Start with PTY for interactive
 exec pty:true workdir:~/project background:true command:"claude --permission-mode plan"
 
 # Monitor
 process action:log sessionId:XXX
 
 # Send input
-process action:submit sessionId:XXX data:"your follow-up question"
+process action:submit sessionId:XXX data:"Continue with step 2"
 ```
-
-## Common Commands
-
-| Command | Purpose |
-|---------|---------|
-| `/plan on` | Enable plan mode |
-| `/plan off` | Disable plan mode |
-| `/compact` | Compress context |
-| `/clear` | Clear conversation |
-| `/help` | Show all commands |
 
 ## Tips
 
-- Use `--permission-mode plan` for pure design work
+- Use `/compact` regularly to manage context
+- `! git status` to run commands without Claude processing
+- `@src/` to quickly reference files
+- `/cost` to monitor token usage
+- `Esc Esc` to undo if Claude goes wrong direction
 - Export plans as markdown for Goose handoff
-- Use `-c` to continue refining across sessions
-- Pair with Goose for THINK → DO workflow

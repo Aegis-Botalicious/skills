@@ -7,73 +7,79 @@ description: Use Goose AI agent for code execution, building, and implementation
 
 Use `goose` for execution, coding, and building. Receives plans from Claude Code.
 
-## Quick Start
+## Quick Reference
+
+```bash
+goose session                       # Start interactive session
+goose session -n my-project         # Named session (resumable)
+goose session -n my-project -r      # Resume named session
+goose run -t "instructions"         # Execute text directly
+goose run -i instructions.md        # Execute from file
+goose configure                     # Configure provider/model
+```
+
+## Core Commands
 
 ### Interactive Session
 
 ```bash
-cd ~/project
-goose session
+goose session                           # Basic session
+goose session -n "feature-auth"         # Named session
+goose session -r -n "feature-auth"      # Resume by name
+goose session -r --session-id 20250205_1  # Resume by ID
+goose session --fork -r                 # Fork most recent session
+goose session --history -r              # Show history when resuming
 ```
 
-### Named Session (Resumable)
+### Run (Automation)
 
 ```bash
-goose session --name "habityield-auth"
-goose session --name "habityield-auth" --resume  # Continue later
+# Direct text
+goose run -t "Create a REST API for todos"
+
+# From instruction file
+goose run -i instructions.md
+
+# From stdin
+echo "Fix the login bug" | goose run -i -
+
+# Multi-line stdin
+cat << EOF | goose run -i -
+1. Run tests
+2. Fix failures
+3. Commit changes
+EOF
+
+# Stay interactive after initial task
+goose run -i instructions.md -s
+
+# Named run session (resumable)
+goose run -n "daily-tasks" -t "Run morning checks"
+goose run -n "daily-tasks" -r  # Resume
 ```
 
-### Execute from File
+### Recipes
 
 ```bash
-goose run instructions.md
-echo "Build the auth module" | goose run
+goose run --recipe recipe.yaml
+goose run --recipe recipe.yaml --params key=value
 ```
 
-## Configuration
+## Provider & Model Selection
 
-### First Time Setup
-
+Configure once:
 ```bash
 goose configure
 ```
 
-This opens interactive config for:
-- Provider selection (Anthropic, OpenAI, etc.)
-- Model selection
-- API keys
-
-### Multi-Model Config
-
-Edit `~/.config/goose/profiles.yaml`:
-
-```yaml
-default:
-  provider: anthropic
-  model: claude-sonnet-4-20250514
-  
-opus:
-  provider: anthropic
-  model: claude-opus-4-20250514
-  
-codex:
-  provider: openai
-  model: gpt-5.2-codex
-  
-local:
-  provider: ollama
-  model: codellama:latest
-  host: http://jetson-orin:11434
-```
-
-Use profiles:
+Or per-command:
 ```bash
-GOOSE_PROFILE=opus goose session
-GOOSE_PROFILE=codex goose session --name "code-gen"
-GOOSE_PROFILE=local goose session --name "quick-task"
+goose run --provider anthropic --model claude-sonnet-4-20250514 -t "task"
+goose run --provider openai --model gpt-4o -t "task"
+goose session --provider anthropic --model claude-opus-4-20250514
 ```
 
-## Extensions (MCP)
+## Extensions
 
 ### Built-in Extensions
 
@@ -81,121 +87,157 @@ GOOSE_PROFILE=local goose session --name "quick-task"
 # List available
 goose mcp list
 
-# Add to session
-goose session --with-builtin developer,memory
+# Use in session
+goose session --with-builtin developer
+goose session --with-builtin "developer,computercontroller"
+
+# Use in run
+goose run --with-builtin developer -t "Set up the project"
 ```
 
-### Custom Extensions
+### Custom Extensions (MCP)
 
 ```bash
-goose session --with-extension "npx -y @modelcontextprotocol/server-filesystem /path"
+# Stdio extension
+goose session --with-extension "npx -y @modelcontextprotocol/server-memory"
+
+# With environment variables
+goose session --with-extension "API_KEY=xyz custom-tool args"
+
+# HTTP extension
+goose session --with-streamable-http-extension "http://localhost:8080/mcp"
+
+# Multiple extensions
+goose session \
+  --with-builtin developer \
+  --with-extension "custom-tool" \
+  --with-streamable-http-extension "http://localhost:8080/mcp"
 ```
 
-## Workflow: Executing Plans
-
-### 1. Receive Plan from Claude Code
+## Output Formats (Automation)
 
 ```bash
-cat docs/IMPLEMENTATION_PLAN.md
-```
+# JSON output (for CI/CD)
+goose run --output-format json -t "task"
 
-### 2. Start Execution Session
+# Streaming JSON (real-time)
+goose run --output-format stream-json -t "task"
 
-```bash
-goose session --name "feature-implementation"
-```
+# No session file (one-off scripts)
+goose run --no-session -t "automated task"
 
-### 3. Execute Step by Step
-
-In session:
-```
-Execute step 1 from docs/IMPLEMENTATION_PLAN.md:
-"Set up Firebase Auth with email/password"
-
-Commit after completion with message: "feat(auth): add Firebase Auth setup"
-```
-
-### 4. Continue or Resume
-
-```bash
-goose session --name "feature-implementation" --resume
-```
-
-## Running in Background
-
-For autonomous execution:
-
-```bash
-# Start with PTY
-exec pty:true workdir:~/project background:true command:"goose session --name 'overnight-build'"
-
-# Monitor
-process action:log sessionId:XXX
-
-# Send input
-process action:submit sessionId:XXX data:"Continue to step 2"
-
-# Kill if needed
-process action:kill sessionId:XXX
+# Combined for CI
+goose run --output-format json --no-session -t "run tests"
 ```
 
 ## Session Management
 
 ```bash
-goose session list              # List all sessions
-goose session remove            # Interactive remove
-goose session export            # Export session
-goose projects                  # List recent project dirs
+goose session list                      # List all sessions
+goose session list --format json        # JSON output
+goose session list --limit 10           # Last 10 only
+goose session list -w ~/project         # Filter by directory
+
+goose session remove                    # Interactive removal
+goose session remove -n my-project      # Remove by name
+goose session remove -r "test-.*"       # Remove by regex
+
+goose session export -n my-project      # Export as markdown
+goose session export -n my-project --format json -o backup.json
+
+goose session diagnostics -n my-project # Generate debug bundle
+```
+
+## Debug Mode
+
+```bash
+goose session --debug                   # Verbose tool output
+goose run --debug -t "task"             # Debug run
+```
+
+Shows complete tool responses, parameter values, and full paths.
+
+## Behavior Controls
+
+```bash
+# Limit consecutive identical tool calls (prevent loops)
+goose session --max-tool-repetitions 3
+
+# Limit turns without user input
+goose session --max-turns 25
+```
+
+## Docker Container
+
+```bash
+goose session --container my-container
+goose run --container my-container -t "task"
+```
+
+## Executing Plans from Claude Code
+
+### Pattern 1: Direct File Execution
+
+```bash
+# Claude Code created docs/IMPLEMENTATION_PLAN.md
+goose run -i docs/IMPLEMENTATION_PLAN.md
+```
+
+### Pattern 2: Named Session for Complex Work
+
+```bash
+# Start
+goose session -n "habityield-phase1"
+
+# In session, reference the plan
+> Execute the implementation plan in docs/IMPLEMENTATION_PLAN.md, step by step.
+> Commit after each major milestone.
+
+# Later, resume
+goose session -n "habityield-phase1" -r
+```
+
+### Pattern 3: CI/CD Integration
+
+```bash
+goose run \
+  --provider anthropic \
+  --model claude-sonnet-4-20250514 \
+  --output-format json \
+  --no-session \
+  -i ci-instructions.md
+```
+
+## Background Execution
+
+```bash
+# Start with PTY
+exec pty:true workdir:~/project background:true command:"goose session -n overnight"
+
+# Monitor
+process action:log sessionId:XXX
+
+# Send input
+process action:submit sessionId:XXX data:"Continue to next step"
+
+# Kill if needed
+process action:kill sessionId:XXX
 ```
 
 ## Multi-Model Strategy
 
-| Task Type | Profile | Model | Why |
-|-----------|---------|-------|-----|
-| Complex reasoning | opus | claude-opus-4 | Best for architecture |
-| Code generation | codex | gpt-5.2-codex | Optimized for code |
-| Quick tasks | local | codellama | Free, fast |
-| General dev | default | claude-sonnet-4 | Good balance |
-
-### Example: Multi-Model Workflow
-
-```bash
-# 1. Architecture with Opus
-GOOSE_PROFILE=opus goose session --name "design"
-> Design the database schema for HabitYield
-
-# 2. Code gen with Codex  
-GOOSE_PROFILE=codex goose session --name "implement"
-> Implement the schema from docs/SCHEMA.md
-
-# 3. Quick fixes with local
-GOOSE_PROFILE=local goose session --name "fixes"
-> Fix the linting errors in lib/models/
-```
-
-## Integration with Claude Code
-
-### The THINK → DO Pattern
-
-```
-┌─────────────────┐     ┌─────────────────┐
-│   Claude Code   │ ──▶ │     Goose       │
-│   (THINK)       │     │     (DO)        │
-├─────────────────┤     ├─────────────────┤
-│ /plan mode      │     │ Multi-model     │
-│ Architecture    │     │ Code execution  │
-│ PRD refinement  │     │ Testing         │
-│ Design docs     │     │ Building        │
-└─────────────────┘     └─────────────────┘
-        │                       │
-        ▼                       ▼
-  IMPLEMENTATION_PLAN.md   Working Code
-```
+| Task | Provider | Model | Flag |
+|------|----------|-------|------|
+| Complex reasoning | anthropic | claude-opus-4 | `--provider anthropic --model claude-opus-4-20250514` |
+| Code generation | openai | gpt-4o | `--provider openai --model gpt-4o` |
+| Quick tasks | ollama | codellama | `--provider ollama --model codellama:latest` |
+| General | anthropic | claude-sonnet-4 | `--provider anthropic --model claude-sonnet-4-20250514` |
 
 ## Tips
 
-- Use named sessions for complex features
-- Match model to task complexity
-- Resume sessions to maintain context
-- Use `goose run` for scripted execution
-- Configure local LLM for cost savings
+- Use `goose run -t` for one-off automation
+- Use `goose session -n` for complex multi-step work
+- Add `--debug` when troubleshooting
+- Use `--output-format json` for CI/CD pipelines
+- Use `--no-session` for stateless automation
+- Resume with `-r` to continue where you left off
